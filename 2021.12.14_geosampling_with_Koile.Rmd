@@ -1,0 +1,370 @@
+---
+title: "Detecting linguistic variation with geographic sampling"
+author: "Ezequiel Koile, George Moroz"
+institute: "Linguistic Convergence Laboratory, NRU HSE"
+date: "14 December 2020"
+output: 
+  beamer_presentation:
+    df_print: kable
+    latex_engine: xelatex
+    citation_package: natbib
+    keep_tex: false
+    includes:
+      in_header: "config/presento.sty"
+bibliography: bibliography.bib
+biblio-style: "apalike"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(digits = 3)
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+# library(qrcode)
+# png(filename="images/00_qrcode.png", width = 200, height = 200)
+# qrcode_gen("https://github.com/agricolamz/2020_SLE_Koile_Moroz_geosampling/raw/master/2020_SLE_Koile_Moroz_geosampling.pdf")
+# dev.off()
+library(tidyverse)
+library(broom)
+library(ggeffects)
+library(lingtypology)
+theme_set(theme_bw()+
+            theme(text = element_text(size = 15),
+                  legend.position="bottom"))
+generated_data <- read_csv("data/generated_data.csv")
+generated_data %>%
+  mutate(type = ifelse(type == "random", "uniform", type),
+         type = factor(type, levels = c("uniform", "equadistant", "central-periphery"))) ->
+  generated_data
+all_results <- read_csv("data/all_results.csv")
+all_results %>%
+  mutate(type = ifelse(type == "random", "uniform", type),
+         type = factor(type, levels = c("uniform", "equadistant", "central-periphery")),
+         cluster_type = factor(cluster_type, levels = c("random", "k-means", "hierarchical clustering")),
+         ratio_binary = ifelse(ratio == 1, 1, 0)) ->
+  all_results
+# circassian_all_results <- read_csv("data/circassian_all_results.csv")
+# circassian_all_results %>% 
+#     mutate(cluster_type = factor(cluster_type, levels = c("random", "k-means", "hierarchical clustering")),
+#          ratio_binary = ifelse(ratio == 1, 1, 0)) ->
+#   circassian_all_results
+# 
+# circassian %>% 
+#   mutate(dialect = ifelse(dialect == "Abadzex", "Temirgoy", dialect),
+#          dialect = ifelse(dialect == "Xakuch", "Shapsug", dialect)) -> 
+#   circassian
+
+circassian <- read_csv("data/circassian.csv")
+```
+
+# Introduction
+
+## Introduction
+
+* Geolectal variation is often present in settings where one language is spoken across a vast geographic area [@labov1963social].
+* It can be found in phonological, morphosyntactic, and lexical features. 
+* It could be overlooked by linguists [@dorian10].
+
+## The problem
+
+* Let us consider a geographical dialect continuum formed by a group of small villages [@chambers2004dialectology: 5--7]
+
+* We are interested in spotting variation of a discrete parameter among the lects spoken in these villages
+
+```{r, fig.height=6}
+map.feature(languages = circassian$language,
+            features = circassian$language,
+            latitude = circassian$latitude,
+            longitude = circassian$longitude, 
+            minimap = TRUE,
+            minimap.position = "topright",
+            legend.position = "bottomleft",
+            tile = "Esri.WorldTopoMap")
+```
+
+## The problem
+
+* It is very impractical to conduct fieldwork in each single village. Therefore, we need to choose a *sample* of locations.
+
+* *Research Question*: How to choose the sample of villages to survey? 
+
+```{r, fig.height=6}
+map.feature(languages = circassian$language,
+            features = circassian$dialect,
+            latitude = circassian$latitude,
+            longitude = circassian$longitude, 
+            minimap = TRUE,
+            minimap.position = "topright",
+            legend.position = "bottomleft",
+            tile = "Esri.WorldTopoMap")
+```
+
+
+## The problem
+
+* It is very impractical to conduct fieldwork in each single village. Therefore, we need to choose a *sample* of locations.
+
+* *Research Question*: How to choose the sample of villages to survey? 
+
+```{r, fig.height=6}
+map.feature(languages = circassian$language,
+            features = circassian$uvular_qh,
+            latitude = circassian$latitude,
+            longitude = circassian$longitude, 
+            minimap = TRUE,
+            minimap.position = "topright",
+            legend.position = "bottomleft",
+            tile = "Esri.WorldTopoMap")
+```
+
+# Our approach
+
+## Our approach
+
+* We want to find the amount of variation present for a given feature. Therefore, we try different ways of choosing the villages to sample for detecting this variation.
+
+* As we assume we do not have any data beyond the geographic location of each village, we use these locations for building our sample.
+
+* We generate clusters with different algorithms (*k*-means, hierarchical clustering) and pick our sampled locations based on them (package stats, [@rteam]).
+
+* We compare our results against random geographic sampling for multiple categorical data, in two different scenarios:
+    * Simulated data
+    * Dialects of Circassian languages
+
+# Simulated data
+
+## Simulated data
+
+### Data generation
+
+* total number of locations (*N*): $30, 50, 70$
+* number of categories (*n*): $3, 4, 5$
+* type of spatial relation:
+    * uniform: variation is uniformly distributed across space
+    * equadistant: *n* groups with unique values, partially overlaping 
+    * central-periphery: one main group in the center, the rest around it
+* count configuration (*c*): how the *n* categories are distributed across the *N* locations (e.g., for *N*=30, *n*=3, the count configuration could be *c*=10-10-10, *c*=20-8-2, etc.)
+
+### Sampling
+
+* clustering method: hierarchical clustering, *k*-means, random sampling
+* proportion of villages sampled: $p = 0.05, 0.10, \ldots, 0.90$
+
+From  those values we could derive the number of sampled locations, or number of clusters ($k$): $k = p\times N$
+
+## Example of different number of locations (*N*)
+
+```{r}
+set.seed(42)
+generated_data %>% 
+  group_by(n_villages) %>% 
+  sample_n(1) %>% 
+  ungroup() %>% 
+  select(dataset_id) %>% 
+  unlist() %>% 
+  unname() ->
+  select_n_villages
+
+generated_data %>% 
+  filter(dataset_id %in% select_n_villages) %>% 
+  ggplot(aes(x, y))+
+  geom_point()+
+  facet_wrap(~n_villages, nrow = 2)+
+  labs(x = "", y = "")+
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank())
+```
+
+## Example of different number of categories (*n*)
+
+```{r}
+set.seed(42)
+generated_data %>% 
+  group_by(n_category) %>% 
+  sample_n(1) %>% 
+  ungroup() %>% 
+  select(dataset_id) %>% 
+  unlist() %>% 
+  unname() ->
+  select_n_category
+
+generated_data %>% 
+  filter(dataset_id %in% select_n_category) %>% 
+  ggplot(aes(x, y, color = value, shape = value))+
+  geom_point(size = 2)+
+  facet_wrap(~n_category, nrow = 2)+
+  labs(x = "", y = "", color = "")+
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank())+
+  scale_shape_manual("", values=c(15,16,17,18, 8))
+```
+
+
+## Example of different count configurations (*c*)
+
+```{r}
+set.seed(42)
+generated_data %>% 
+  filter(n_category == 4, n_villages == 30) %>% 
+  group_by(vars) %>% 
+  sample_n(1) %>% 
+  ungroup() %>%
+  sample_n(4) %>% 
+  select(dataset_id) %>% 
+  unlist() %>% 
+  unname() ->
+  select_vars
+
+generated_data %>% 
+  filter(dataset_id %in% select_vars) %>% 
+  ggplot(aes(x, y, color = value, shape = value))+
+  geom_point(size = 2)+
+  facet_wrap(~vars, nrow = 2)+
+  labs(x = "", y = "", color = "")+
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank())+
+  scale_shape_manual("", values=c(15,16,17,18))
+```
+
+## Example of different types of spatial configurations
+
+![](images/spatial_pattern_example.png)
+
+Equidistant (a), center-periphery (b), and uniform (c) distributions, for N_s = 117 settlements distributed in N_c = 6 categories, with a count configuration Q = (42, 21, 19, 13, 11, 11), and r = 26. In (a), the distributions’ centers form a regular hexagon. In (b), the most populated category lies in the origin, while the other centers form a regular pentagon around it. In (c) all centers coincide at the origin.
+
+# Results and modelling
+
+## Results 
+
+![](images/discovery_fracton_by_village.png)
+
+Results for the discovery fraction as a function of the settlement sample fraction for differnt values of the parameters. We can see a clear improvement in the discovery fraction when using clustering algorithms for the data with spatial structure (first and second rows), and no improvement or depreciation in performance for the cases with no spatial structure (last row).
+
+## Modelling the variation
+
+* From the previous slides, we can see that 
+  * *k*-means and hierarchical clustering are signifficantly better than random sampling in non-uniform spatial relations;
+  * *k*-means and hierarchical clustering are as good as random sampling with uniform spatial relations.
+
+\pause
+
+* We run a logistic regression in order to prove those observations by quantifying the relation between:
+  * One **binary variable** (outcome):
+    * All variation discovered vs. Not all variation discovered
+  * Three parameters:  
+      * Proportion of villages sampled $p$ (numeric: $0.1, \ldots, 0.90$)
+      * Type of clustering (hirarchical, *k*-means, random)
+      * Type of geographic distribution (central-periphery, equidistant, uniform)
+  
+outcome ~ (spatial configuration + cluster type) * proportion_of_villages
+             
+## Regression results
+
+\small
+```{r}
+fit_1 <- glm(ratio_binary ~ (type+cluster_type)*proportion_of_village,
+             family = "binomial",
+             data=all_results)
+# tidy(fit_1) %>% 
+#   write_csv("data/fit_1.csv")
+read_csv("data/fit_1.csv") %>% 
+  knitr::kable()
+```
+
+\normalsize
+
+## Regression results
+```{r}
+ggeffect(fit_1, terms = c("proportion_of_village", "cluster_type", "type")) %>% 
+  plot()+
+  theme(text = element_text(size = 15),
+                  legend.position="bottom")+
+  labs(y = "proportion of variation discovered",
+       x = "proportion of villages sampled",
+       color = "",
+       title = "Predicted values of the logistic regression")+
+  scale_color_manual(values = hcl(h = c(15, 135, 255, 375), l = 65, c = 100)[c(3:1)])
+```
+  
+# Circassian data example
+
+## Algorithm evaluation using Circassian data [@moroz2017]
+
+* `r nrow(circassian)` villages
+* proportion of villages sampled: 0.05, 0.06, $\dots$, 0.89, 0.9
+* true count configuration: 68-27-17-15-13-10-5-3
+* 100 runs of each method on the same dataset
+
+```{r, fig.height=6}
+map.feature(languages = circassian$language,
+            features = circassian$dialect,
+            latitude = circassian$latitude,
+            longitude = circassian$longitude, 
+            minimap = TRUE,
+            minimap.position = "topright",
+            legend.position = "bottomleft",
+            tile = "Esri.WorldTopoMap")
+```
+
+
+## Algorithm evaluation using Circassian dialects data [@moroz2017]
+
+![](images/circassian_dialect_samples.png)
+
+## Algorithm evaluation using Circassian qʰ data
+
+![](images/circassian_qh_samples.png)
+
+# Entropy
+
+## Information entropy
+
+In order to measure how the count configuration $c$ affects our sampling method, we use the information entropy, introduced in [@shannon48]:
+
+$$H(X) = - \sum_{i = 1}^n{P(x_i)\times\log_2P(x_i)}$$
+\pause
+
+The range of the information entropy is $H(X) \in [0, +\infty]$: 
+
+```{r}
+tibble(a = c("A", "A", "A", "A", "B"),
+       b = c("A", "A", "A", "B", "B"),
+       c = c("A", "A", "B", "B", "B"),
+       e = c("A", "A", "B", "B", "C"),
+       f = c("A", "B", "C", "A", "B"),
+       g = c("A", "A", "A", "A", "A"), 
+       h = c("A", "B", "C", "D", "E")) %>% 
+  pivot_longer(names_to = "id", values_to = "value", a:h) %>% 
+  group_by(id) %>% 
+  mutate(data = str_c(value, collapse = "-")) %>% 
+  count(data, value) %>% 
+  mutate(ratio = n/sum(n)) %>% 
+  group_by(data) %>% 
+  summarise(entropy = round(-sum(ratio*log2(ratio)), 2)) %>% 
+  arrange(entropy) %>% 
+  knitr::kable()
+```
+
+## Information entropy: simulated data
+
+![](images/normalized_entrop.png)
+
+# Conclusions
+
+## Conclusions
+
+* We introduced a geographic sampling algorithm for detecting variation in doculects, based on different clustering methods
+* We tested our algorithm against random sampling in data simulated with different geographic distributions and numbers of observations
+* We have found that our algorithm outperforms random sampling on simulated data in the cases where an underlying geographical structure is present, and performs as well as random sampling when variation is uniformly distributed across space
+* We applied our algorithm to real data from Circassian languages
+* We have found that our algorithm outperforms random sampling on real data for small sample proportions, but hirarchical clustering becomes worse than random sampling on larger sample proportions on those specific data
+* We found that our algorithm has optimal results when entropy is lower
+
+## Problems
+
+* dialect fluctuation
+* do we need statistics?
+* is discovered fraction a good measure? We already showed that entropy matters...
+* should we be interested in estimating discovered proportions?
+
+# References {.allowframebreaks}

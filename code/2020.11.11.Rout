@@ -1,0 +1,695 @@
+
+R version 4.0.4 (2021-02-15) -- "Lost Library Book"
+Copyright (C) 2021 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> #' @param N number of groups
+> #' @param n number of observations within each group. It is also possible to put a vector of obervations per group (in that situation center group should go last).
+> #' @param r distance of the group centroid from the center that is (0, 0)
+> #' @param central_distance function. ...
+> #' @param neighbour_distance function. Function that 
+> #' @param center logical. Whether one group shoulbe positioned in the center
+> 
+> generate_equadistant <- function(N = 5, 
++                                  n = 100, 
++                                  r = 26,
++                                  central_distance = function(r){log(r)},
++                                  neighbour_distance = function(r, N){2*r*sin(pi/N)},
++                                  center = FALSE){
++   require(tidyverse,quietly = TRUE)
++   n <- unlist(n)
++   
++   if(length(n) == 1){
++     n <- rep(n, N)
++   }
++   
++   if(length(n) != N){
++     stop("The number of groups (N) should be equal to the number of values in number of observations (n)")
++   }
++   
++   if(center){
++     N <- N-1
++     n_center <-  n[length(n)]
++     n <- n[-length(n)]
++   }
++   
++   n <- sample(n) # in order to have random order of number of observation per groups 
++   
++   angle <- 2*pi/N
++   lapply(1:N, function(k){
++     V1 <- (2-rlnorm(n = n[k], meanlog = 0, sdlog = central_distance(r)))*r
++     V2 <- rnorm(n = n[k], mean = 0, sd = neighbour_distance(r, N))
++     while(sum(V1 > r*1.5 | V1 < -r*1.5) > 0){
++       V1 <- ifelse(V1 > r*1.5 | V1 < -r*1.5, 
++                    (2-rlnorm(n = n[k], meanlog = 0, sdlog = 1))*r, 
++                    V1)  
++     }
++     df <- data.frame(V1, V2)
++     df$V1 <- df$V1+r
++     df$x <- df$V1*cos(angle*k)-df$V2*sin(angle*k)
++     df$y <- df$V1*sin(angle*k)+df$V2*cos(angle*k)
++     return(df[,3:4])
++   }) %>% 
++     do.call(rbind, .) %>% 
++     as.data.frame() %>% 
++     mutate(id = c(unlist(mapply(rep, 1:N, n)))) ->
++     results
++   
++   if(center){
++     data.frame(x = rnorm(n = n_center, mean = 0, sd = r*0.75),
++                y = rnorm(n = n_center, mean = 0, sd = r*0.75),
++                id = N + 1) %>% 
++       bind_rows(results) ->
++       results
++   }
++   results %>% 
++     mutate(id = factor(id)) %>% 
++     return()
++ }
+> 
+> #' @param n_villages number of villages to simulate
+> #' @param n_categories number of categories to simulate
+> 
+> all_categories_values <- function(n_villages = 30, n_categories = 5){
++   require(tidyverse,quietly = TRUE)
++   partitions::parts(n_villages) %>% 
++     as.matrix() %>% 
++     t() %>% 
++     as.data.frame() %>% 
++     filter(eval(parse(text = str_c("V", n_categories+1))) == 0,
++            eval(parse(text = str_c("V", n_categories))) != 0) %>% 
++     select(1:all_of(n_categories)) %>% 
++     mutate(set = 1:n()) %>% 
++     pivot_longer(values_to = "value", names_to = "column", -set) %>% 
++     group_by(set) %>% 
++     mutate(ratio = value/n_villages,
++            H = -sum(ratio*log2(ratio))) %>% 
++     select(-ratio) %>% 
++     mutate(n_villages,
++            n_categories) %>% 
++     pivot_wider(values_from = value, names_from = column) %>% 
++     ungroup()
++ }
+> 
+> setwd("/home/agricolamz/work/materials/2021_SLE_Koile_Moroz_geosampling")
+> 
+> library(tidyverse)
+── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+✔ ggplot2 3.3.3     ✔ purrr   0.3.4
+✔ tibble  3.1.0     ✔ dplyr   1.0.5
+✔ tidyr   1.1.3     ✔ stringr 1.4.0
+✔ readr   1.4.0     ✔ forcats 0.5.1
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::filter() masks stats::filter()
+✖ dplyr::lag()    masks stats::lag()
+> 
+> # generate all possible combinations of values ---------------------------
+> # index <- 0
+> # map(3:7 * 10, function(j) {
+> #   map(3:9, function(i) {
+> #     all_categories_values(n_villages = j, i) %>% 
+> #       mutate(set = set+index) ->
+> #       df
+> #     write_csv(df, str_c("generated_data/nv_", j, "_nc_", i, ".csv"))
+> #     index <<- max(df$set)
+> #   })
+> # })
+> 
+> # generate data for each combination --------------------------------------
+> 
+> df <- map_dfr(str_c("generated_data/", list.files("generated_data", pattern = "^nv")), read_csv)
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double(),
+  V9 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double(),
+  V9 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double(),
+  V9 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double(),
+  V9 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double()
+)
+
+
+── Column specification ────────────────────────────────────────────────────────
+cols(
+  set = col_double(),
+  H = col_double(),
+  n_villages = col_double(),
+  n_categories = col_double(),
+  V1 = col_double(),
+  V2 = col_double(),
+  V3 = col_double(),
+  V4 = col_double(),
+  V5 = col_double(),
+  V6 = col_double(),
+  V7 = col_double(),
+  V8 = col_double(),
+  V9 = col_double()
+)
+
+> set.seed(42)
+> 
+> system.time(
++ map(1:nrow(df), function(i){
++   generate_equadistant(center = FALSE,
++                        N = unique(df$n_categories[i]), 
++                        n  = df[i, -c(1:4)] %>% 
++                          t() %>% 
++                          as_tibble() %>% 
++                          na.omit() %>% 
++                          pull()) %>% 
++     bind_cols(df[i,]) %>% 
++     write_csv("generated_data/equidistant.csv", append = TRUE)
++   generate_equadistant(center = TRUE,
++                        N = unique(df$n_categories[i]), 
++                        n  = df[i, -c(1:4)] %>% 
++                            t() %>% 
++                            as_tibble() %>% 
++                            na.omit() %>% 
++                            pull()) %>% 
++     bind_cols(df[i,]) %>% 
++     write_csv("generated_data/cennter_periphery.csv", append = TRUE)   
++ })
++ )
+    user   system  elapsed 
+8042.703   44.382 8089.693 
+Warning message:
+The `x` argument of `as_tibble.matrix()` must have unique column names if `.name_repair` is omitted as of tibble 2.0.0.
+Using compatibility `.name_repair`.
+This warning is displayed once every 8 hours.
+Call `lifecycle::last_warnings()` to see where this warning was generated. 
+> 
+> 
+> proc.time()
+    user   system  elapsed 
+8044.842   44.443 8091.984 

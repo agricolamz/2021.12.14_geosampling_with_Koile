@@ -1,0 +1,247 @@
+
+R version 4.0.5 (2021-03-31) -- "Shake and Throw"
+Copyright (C) 2021 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> setwd("/home/agricolamz/work/materials/2021_SLE_Koile_Moroz_geosampling/generated_data/")
+> library(tidyverse)
+── Attaching packages ─────────────────────────────────────── tidyverse 1.3.1 ──
+✔ ggplot2 3.3.3     ✔ purrr   0.3.4
+✔ tibble  3.1.1     ✔ dplyr   1.0.5
+✔ tidyr   1.1.3     ✔ stringr 1.4.0
+✔ readr   1.4.0     ✔ forcats 0.5.1
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::filter() masks stats::filter()
+✖ dplyr::lag()    masks stats::lag()
+> 
+> # generate data -----------------------------------------------------------
+> 
+> files <- c("equidistant", "center_periphery")
+> # map(files, function(x) list.files(pattern = str_c(x, "_"))) %>% 
+> #   unlist() %>% 
+> #   file.remove()
+> 
+> villages_fraction <- seq(0.1, 0.9, 0.1)
+> 
+> gc()
+          used (Mb) gc trigger  (Mb) max used (Mb)
+Ncells  925717 49.5    1894142 101.2  1174245 62.8
+Vcells 1497942 11.5    8388608  64.0  2010332 15.4
+> 
+> ft <- data.frame(from = 106663*0:4+1,
++                  to = 106663*1:5)
+> 
+> ft <- ft[-2,]
+> 
+> map(seq_along(ft$from), function(section){
++   map(files, function(file){
++     df <- data.table::fread(str_c(file, ".csv"))
++     
++     colnames(df) <-
++       c(
++         'x',
++         'y',
++         'id',
++         'set',
++         'H',
++         'n_villages',
++         'n_categories',
++         'V1',
++         'V2',
++         'V3',
++         'V4',
++         'V5',
++         'V6',
++         'V7',
++         'V8',
++         'V9'
++       )
++     
++     
++     
++     # # reduce in order to check the size
++     # df %>% 
++     #   filter(set %in% sample(1:533315, 150)) ->
++     #   df
++     
++     df %>% 
++       filter(set %in% ft$from[section]:ft$to[section]) ->
++       df
++     
++     map(villages_fraction, function(i){
++       set.seed(42)
++       df %>%
++         mutate(n_centers = round(n_villages*i)) %>%
++         group_by(set, n_centers) %>%
++         mutate(cluster = tryCatch(kmeans(as.matrix(tibble(x, y)),
++                                          centers = unique(n_centers))$cluster,
++                                   error = function(e) "problem")) %>%
++         group_by(set, cluster) %>%
++         sample_n(1) %>%
++         group_by(set, H, n_villages, n_categories) %>%
++         summarise(variability = ifelse(cluster != "problem",
++                                        length(unique(id))/n_categories,
++                                        NA), .groups = "drop") %>%
++         mutate(type = "k-means",
++                space = file,
++                select_p = i) %>%
++         distinct() %>%
++         write_csv(str_c(file, "_k_means_results.csv"), append = TRUE)
++       gc()
++     })
++     
++     map(villages_fraction, function(i){
++       set.seed(42)
++       df %>% 
++         mutate(n_centers = round(n_villages*i)) %>% 
++         group_by(set, n_centers) %>% 
++         mutate(cluster = tryCatch(cutree(hclust(dist(tibble(x, y))), 
++                                          k = unique(n_centers)),
++                                   error = function(e) "problem")) %>% 
++         group_by(set, cluster) %>% 
++         sample_n(1) %>% 
++         group_by(set, H, n_villages, n_categories) %>% 
++         summarise(variability = ifelse(cluster != "problem", 
++                                        length(unique(id))/n_categories,
++                                        NA), .groups = "drop") %>% 
++         mutate(type = "h-clust",
++                space = file,
++                select_p = i) %>% 
++         distinct() %>% 
++         write_csv(str_c(file, "_h_clust_results.csv"), append = TRUE)
++       gc()
++     })
++     
++     map(villages_fraction, function(i){
++       set.seed(42)
++       df %>% 
++         mutate(n_centers = round(n_villages*i)) %>% 
++         group_by(set, n_centers) %>% 
++         sample_n(n_centers) %>% 
++         group_by(set, H, n_villages, n_categories) %>% 
++         summarise(variability = length(unique(id))/n_categories, .groups = "drop") %>% 
++         mutate(type = "random",
++                space = file,
++                select_p = i) %>% 
++         distinct() %>% 
++         write_csv(str_c(file, "_random_results.csv"), append = TRUE)
++       gc()
++     })
++     
++     rm(list=ls())
++     gc()
++   })
++ })
+[[1]]
+[[1]][[1]]
+           used  (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells  1011037  54.0    3562760  190.3  26544617 1417.7
+Vcells 34603869 264.1  220381160 1681.4 466809845 3561.5
+
+[[1]][[2]]
+           used  (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells  1011044  54.0    3495159  186.7  26544617 1417.7
+Vcells 67820930 517.5  276365990 2108.6 539777272 4118.2
+
+
+[[2]]
+[[2]][[1]]
+            used  (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells   1011052  54.0    3602853  192.5  28334942 1513.3
+Vcells 100750262 768.7  409422801 3123.7 582036019 4440.6
+
+[[2]][[2]]
+            used   (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells   1011059   54.0    3303599  176.5  30767142 1643.2
+Vcells 133967599 1022.1  495322396 3779.1 619152981 4723.8
+
+
+[[3]]
+[[3]][[1]]
+            used   (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells   1011067   54.0    3054535  163.2  30767142 1643.2
+Vcells 166896436 1273.4  493749064 3767.1 619152981 4723.8
+
+[[3]][[2]]
+            used   (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells   1011074   54.0    3295739  176.1  31286411 1670.9
+Vcells 200113694 1526.8  590397367 4504.4 698483766 5329.1
+
+
+[[4]]
+[[4]][[1]]
+            used (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells   1011082   54    3296340  176.1  31286411 1670.9
+Vcells 233042535 1778  717302360 5472.6 717302321 5472.6
+
+[[4]][[2]]
+            used   (Mb) gc trigger   (Mb)  max used   (Mb)
+Ncells   1011089   54.0    3287523  175.6  31286411 1670.9
+Vcells 266259791 2031.5  717302360 5472.6 717302321 5472.6
+
+
+> 
+> # visualize results -------------------------------------------------------
+> # cp_km <- read_csv("center_periphery_k_means_results.csv", col_names = FALSE)
+> # cp_hc <- read_csv("center_periphery_h_clust_results.csv", col_names = FALSE)
+> # cp_r <- read_csv("center_periphery_random_results.csv", col_names = FALSE)
+> # eq_km <- read_csv("equidistant_k_means_results.csv", col_names = FALSE)
+> # eq_hc <- read_csv("equidistant_h_clust_results.csv", col_names = FALSE)
+> # eq_r <- read_csv("equidistant_random_results.csv", col_names = FALSE)
+> # 
+> # cp_km %>% 
+> #   bind_rows(cp_hc,
+> #             cp_r,
+> #             eq_km,
+> #             eq_hc,
+> #             eq_r) ->
+> #   full_dataset
+> # 
+> # colnames(full_dataset) <-
+> #   c(
+> #     'set',
+> #     'H',
+> #     'n_villages',
+> #     'n_categories',
+> #     'discovery_fraction',
+> #     'type',
+> #     'location',
+> #     'village_sample_fraction'
+> #   )
+> # 
+> # full_dataset %>% 
+> #   group_by(n_categories) %>% 
+> #   mutate(n = n()) %>% 
+> #   filter(n > 200) %>% 
+> #   ggplot(aes(village_sample_fraction, discovery_fraction, color = type))+
+> #   #geom_smooth(se = FALSE, method = "glm", method.args = list(family = "binomial"))+
+> #   geom_smooth(se = FALSE)+
+> #   facet_grid(location~n_categories)
+> # 
+> # full_dataset %>% 
+> #   group_by(n_categories) %>% 
+> #   mutate(n = n()) %>% 
+> #   filter(n > 200) %>% 
+> #   ggplot(aes(H, discovery_fraction, color = factor(n_categories), linetype = type))+
+> #   geom_smooth(se = FALSE, method = "glm", method.args = list(family = "binomial"))+
+> #   #geom_smooth(se = FALSE)+
+> #   facet_grid(location~type)+
+> #   scale_linetype_manual("", values = c(1, 2, 4))
+> 
+> proc.time()
+     user    system   elapsed 
+34005.241    26.003 34013.995 

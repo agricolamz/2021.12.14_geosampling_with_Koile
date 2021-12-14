@@ -2,7 +2,7 @@
 title: "Detecting linguistic variation with geographic sampling"
 author: "Ezequiel Koile, George Moroz"
 institute: "Linguistic Convergence Laboratory, NRU HSE"
-date: "14 December 2020"
+date: "14 December 2021"
 output: 
   beamer_presentation:
     df_print: kable
